@@ -1,14 +1,17 @@
-from functions.write_file import write_file
+from functions.run_python import run_python_file
 
 def run_tests():
-    print("\nTest 1: Overwrite calculator/lorem.txt")
-    print(write_file("calculator", "calculator/lorem.txt", "wait, this isn't lorem ipsum"))
+    print("\nTest 1: run main.py")
+    print(run_python_file("calculator", "main.py"))
 
-    print("\nTest 2: Create calculator/pkg/morelorem.txt")
-    print(write_file("calculator", "calculator/pkg/morelorem.txt", "lorem ipsum dolor sit amet"))
+    print("\nTest 2: run tests.py")
+    print(run_python_file("calculator", "tests.py"))
 
-    print("\nTest 3: Attempt to write outside working dir")
-    print(write_file("calculator", "/tmp/temp.txt", "this should not be allowed"))
+    print("\nTest 3: run ../main.py (should error)")
+    print(run_python_file("calculator", "../main.py"))
+
+    print("\nTest 4: run nonexistent.py (should error)")
+    print(run_python_file("calculator", "nonexistent.py"))
 
 if __name__ == "__main__":
     run_tests()
