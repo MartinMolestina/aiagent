@@ -1,16 +1,12 @@
 import os
 from google.genai import types
 
-
 def get_files_info(working_directory, directory=None):
-    # If no directory is passed, work on current directory
-    target_dir = directory or working_directory
-
-    # get absolute paths
+    # Resolve absolute paths
     abs_working_dir = os.path.abspath(working_directory)
-    abs_target_dir = os.path.abspath(target_dir)
+    abs_target_dir = os.path.abspath(os.path.join(working_directory, directory or ""))
 
-    # check if target directory is outside the working directory
+    # Check if target directory is outside working directory
     if not abs_target_dir.startswith(abs_working_dir):
         return f'Error: Cannot list "{directory}" as it is outside the permitted working directory'
     
@@ -29,9 +25,9 @@ def get_files_info(working_directory, directory=None):
             try:
                 size = os.path.getsize(full_path)
             except OSError:
-                size = 0 # if file is unreadable
+                size = 0  # fallback if size can't be read
 
-            lines. append(f"- {entry}: file_size={size}, bytes, is_dir={is_dir}")
+            lines.append(f"- {entry}: file_size={size} bytes, is_dir={is_dir}")
 
         return "\n".join(lines)
 
@@ -51,4 +47,3 @@ schema_get_files_info = types.FunctionDeclaration(
         },
     ),
 )
-
