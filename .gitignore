@@ -10,4 +10,4 @@ wheels/
 .venv
 
 # Config
-.config
+.env
