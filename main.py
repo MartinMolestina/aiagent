@@ -1,88 +1,92 @@
-import os
 import sys
-from dotenv import load_dotenv
+import os
 from google import genai
 from google.genai import types
+from dotenv import load_dotenv
 
+from prompts import system_prompt
 from call_function import call_function, available_functions
+from config import MAX_ITERS
 
-# Load environment variables
-load_dotenv()
-api_key = os.environ.get("GEMINI_API_KEY")
 
-if not api_key:
-    print("Error: GEMINI_API_KEY not set.")
-    sys.exit(1)
+def main():
+    load_dotenv()
 
-# Get user prompt and verbose flag
-if len(sys.argv) < 2:
-    print("Usage: python main.py 'your prompt' [--verbose]")
-    sys.exit(1)
+    verbose = "--verbose" in sys.argv
+    args = [arg for arg in sys.argv[1:] if not arg.startswith("--")]
 
-user_prompt = sys.argv[1]
-verbose = "--verbose" in sys.argv
+    if not args:
+        print("AI Code Assistant")
+        print('\nUsage: python main.py "your prompt here" [--verbose]')
+        print('Example: python main.py "How do I fix the calculator?"')
+        sys.exit(1)
 
-# Set model and system prompt
-model_name = "gemini-2.0-flash-001"
+    api_key = os.environ.get("GEMINI_API_KEY")
+    client = genai.Client(api_key=api_key)
 
-system_prompt = """
-You are a helpful AI coding agent.
+    user_prompt = " ".join(args)
 
-Your job is to complete coding tasks by using available function calls. You MUST use the tools provided to gather information or take action — do not guess.
+    if verbose:
+        print(f"User prompt: {user_prompt}\n")
 
-Available actions:
-- List files and directories
-- Read file contents
-- Execute Python files with optional arguments
-- Write or overwrite files
-- Call functions
+    messages = [
+        types.Content(role="user", parts=[types.Part(text=user_prompt)]),
+    ]
 
-All paths should be relative. Use the tools step-by-step to solve the user's request, and only give a final response once the task is complete.
-"""
+    iters = 0
+    while True:
+        iters += 1
+        if iters > MAX_ITERS:
+            print(f"Maximum iterations ({MAX_ITERS}) reached.")
+            sys.exit(1)
 
-# Initialize Gemini client
-client = genai.Client(api_key=api_key)
+        try:
+            final_response = generate_content(client, messages, verbose)
+            if final_response:
+                print("Final response:")
+                print(final_response)
+                break
+        except Exception as e:
+            print(f"Error in generate_content: {e}")
 
-# Create initial messages list
-messages = [
-    types.Content(role="user", parts=[types.Part(text=user_prompt)])
-]
 
-# Create tools and config
-tools = [available_functions]
-config = types.GenerateContentConfig(tools=tools, system_instruction=system_prompt)
-
-# Run loop
-MAX_ITERATIONS = 20
-messages = [types.Content(role="user", parts=[types.Part(text=user_prompt)])]
-
-for iteration in range(MAX_ITERATIONS):
-    print(f"\n--- Iteration {iteration + 1} ---")
-
+def generate_content(client, messages, verbose):
     response = client.models.generate_content(
-        model=model_name,
+        model="gemini-2.0-flash-001",
         contents=messages,
-        config=config,
+        config=types.GenerateContentConfig(
+            tools=[available_functions], system_instruction=system_prompt
+        ),
     )
+    if verbose:
+        print("Prompt tokens:", response.usage_metadata.prompt_token_count)
+        print("Response tokens:", response.usage_metadata.candidates_token_count)
 
-    candidate = response.candidates[0]
-    messages.append(candidate.content)
+    if response.candidates:
+        for candidate in response.candidates:
+            function_call_content = candidate.content
+            messages.append(function_call_content)
 
-    # Check if the model is making a function call
-    if candidate.content.parts and candidate.content.parts[0].function_call:
-        function_call = candidate.content.parts[0].function_call
-        function_result = call_function(function_call, verbose=verbose)
+    if not response.function_calls:
+        return response.text
 
-        # Append tool result to messages
-        messages.append(function_result)
-
+    function_responses = []
+    for function_call_part in response.function_calls:
+        function_call_result = call_function(function_call_part, verbose)
+        if (
+            not function_call_result.parts
+            or not function_call_result.parts[0].function_response
+        ):
+            raise Exception("empty function call result")
         if verbose:
-            print(f"-> {function_result.parts[0].function_response.response}")
+            print(f"-> {function_call_result.parts[0].function_response.response}")
+        function_responses.append(function_call_result.parts[0])
 
-        continue  #  Keep looping — model may need another function call
+    if not function_responses:
+        raise Exception("no function responses generated, exiting.")
 
-    # Otherwise, if it's a text response, assume we're done
-    elif candidate.content.parts and candidate.content.parts[0].text:
-        print("\nFinal response:\n")
-        print(candidate.content.parts[0].text)
-        break  #  Done — break out of the loop
+    messages.append(types.Content(role="tool", parts=function_responses))
+
+
+if __name__ == "__main__":
+    main()
